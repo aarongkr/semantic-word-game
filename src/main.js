@@ -14,7 +14,7 @@ const MAX_FONT_SIZE = 64;
 const WORD_MOVEMENT_SPEED = 0.08; // proportion of remaining dist to target moved each frame (0-1)
 const WORD_PADDING_FACTOR = 1.25;
 
-const response = await fetch("/nouns.csv"); const text = await response.text(); const nouns = text.split(/\r?\n/).map(noun => noun.trim()).filter(noun => noun.length > 0);
+const response = await fetch("./nouns.csv"); const text = await response.text(); const nouns = text.split(/\r?\n/).map(noun => noun.trim()).filter(noun => noun.length > 0);
 const secretWord = nouns[Math.floor(Math.random() * nouns.length)];
 console.log("Secret word: ", secretWord);
 
