@@ -77,6 +77,18 @@ body {
         color 0.2s ease;
 }
 
+.mode-button.easy.complete {
+    color: #4caf50;
+}
+
+.mode-button.medium.complete {
+    color: #d99a00;
+}
+
+.mode-button.hard.complete {
+    color: #e53935;
+}
+
 .mode-button.easy:hover {
     color: #4caf50;
     transform: scale(1.25);
@@ -222,4 +234,112 @@ body {
     font-variant-numeric: tabular-nums;
 
     z-index: 10;
+}
+
+.game-controls {
+    position: fixed;
+    top: 0;
+    left: 0;
+
+    display: flex;
+
+    background: var(--text-colour);
+    border-radius: 0 0 16px 0;
+
+    z-index: 10;
+}
+
+.game-controls button {
+    border: none;
+    background: none;
+
+    padding: 12px 14px;
+
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+
+    color: var(--background-colour);
+
+    cursor: pointer;
+
+    transition:
+        background 0.2s ease,
+        opacity 0.2s ease;
+}
+
+.game-controls button:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.game-controls button:first-child {
+    border-radius: 0 0 0 0;
+}
+
+.game-controls button:last-child {
+    border-radius: 0 0 16px 0;
+}
+
+.pause-overlay {
+    position: fixed;
+    inset: 0;
+
+    display: none;
+    align-items: center;
+    justify-content: center;
+
+    background: rgba(0, 0, 0, 0.75);
+
+    z-index: 20;
+}
+
+.pause-overlay.visible {
+    display: flex;
+}
+
+.pause-box {
+    width: min(360px, 85vw);
+
+    padding: 32px;
+
+    background: var(--background-colour);
+    color: var(--text-colour);
+
+    border-radius: 20px;
+
+    text-align: center;
+}
+
+.pause-box h2 {
+    margin: 0 0 20px;
+}
+
+.pause-box p {
+    margin: 8px 0;
+
+    color: #777;
+}
+
+#resumeButton {
+    margin-top: 20px;
+
+    border: none;
+    border-radius: 999px;
+
+    padding: 12px 28px;
+
+    background: var(--text-colour);
+    color: var(--background-colour);
+
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+
+    cursor: pointer;
+
+    transition: transform 0.2s ease;
+}
+
+#resumeButton:hover {
+    transform: scale(1.08);
 }
