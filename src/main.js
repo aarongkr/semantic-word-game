@@ -662,7 +662,7 @@ function createStatsSection(mode, title) {
 
                 <div class="stat">
                     <strong>
-                        ${bestTime !== null ? formatTime(bestTime) : "-—"}
+                        ${bestTime !== null ? formatTime(bestTime) : "-"}
                     </strong>
                     <span>Fastest time</span>
                 </div>
@@ -958,7 +958,7 @@ function loadCompletedGame(mode, savedGame) {
 
     // sisplay info
     const numGuesses = mode === "hard" ? guesses.size : guesses.size - 1;
-    winText.textContent = `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
+    winText.textContent = `The word was "${secretWord}" - you got it in ${numGuesses} guesses in ${timer.textContent}!`;
 }
 
 // start game
@@ -1124,7 +1124,7 @@ async function startGame(mode) {
             const secretCloudWord = new CloudWord(secretWord, MAX_FONT_SIZE, 1);
 
             cloudWords.push(secretCloudWord);
-            winText.textContent = `The word was "${secretWord}" — you gave up after ${playerGuesses} guesses in ${finalTime}.`;
+            winText.textContent = `The word was "${secretWord}" - you gave up after ${playerGuesses} guesses in ${finalTime}.`;
 
             winMessage.querySelector("h2").textContent = "Game over";
             winMessage.classList.add("visible");
@@ -1205,10 +1205,10 @@ async function startGame(mode) {
 
                 if (savedGame.completed) {
                     winMessage.querySelector("h2").textContent = "Level completed!";
-                    winText.textContent = `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
+                    winText.textContent = `The word was "${secretWord}" - you got it in ${numGuesses} guesses in ${timer.textContent}!`;
                 } else {
                     winMessage.querySelector("h2").textContent = "Game over";
-                    winText.textContent = `The word was "${secretWord}" — you gave up after ${numGuesses} guesses in ${timer.textContent}.`;
+                    winText.textContent = `The word was "${secretWord}" - you gave up after ${numGuesses} guesses in ${timer.textContent}.`;
                 }
 
                 winMessage.classList.add("visible");
