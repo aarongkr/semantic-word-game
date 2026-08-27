@@ -13,18 +13,24 @@ const MAX_FONT_SIZE = 64;
 
 const WORD_PADDING_FACTOR = 5;
 
-// Word data
+// daily puzzle storage
+const DAILY_GAME_KEY = "semanticGravityDailyGames";
+const STATS_KEY = "semanticGravityStats";
+
+// word data
 const response = await fetch("./words.json");
 const wordThemes = await response.json();
 
-// Valid words
+// valid words
 const validWords = new Set(words.getAll());
+
 function isValidWord(word) {
     return validWords.has(word)
 };
+
 const guesses = new Set();
 
-// Game state
+// gamestate
 let themeHue = 240;
 
 let secretWord;
@@ -52,18 +58,322 @@ let currentMode;
 // Store completed games for the current session
 const completedGames = new Map();
 
-// important maths/data/library stuff
+// daily puzzle functionality
+
+// get current date
+function getToday() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+// simple hash to turn date to repeatable number
+function hashString(string) {
+    let hash = 0;
+    for (let i = 0; i < string.length; i++) {
+        hash = ((hash << 5) - hash) + string.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+// generate todays puzzle
+function generateDailyPuzzle(mode) {
+    const today = getToday();
+    const seed = hashString(`${today}-${mode}`);
+    const themes = Object.keys(wordThemes);
+    const themeIndex = seed % themes.length;
+    const theme = themes[themeIndex];
+    const themeWords = wordThemes[theme];
+    const wordIndex = Math.floor(seed / themes.length) % themeWords.length;
+    const secret = themeWords[wordIndex];
+    return {
+        date: today,
+        theme: theme,
+        secretWord: secret
+    };
+}
+
+// get all saved daily games
+function getDailyGames() {
+    const saved = localStorage.getItem(DAILY_GAME_KEY);
+    if (!saved) {
+        return {};
+    }
+    try {
+        return JSON.parse(saved);
+    } catch {
+        return {};
+    }
+}
+
+// save all daily games
+function saveDailyGames(games) {
+    localStorage.setItem(DAILY_GAME_KEY, JSON.stringify(games));
+}
+
+// get todays saved game for a difficulty
+function getSavedDailyGame(mode) {
+    const games = getDailyGames();
+    const today = getToday();
+    if (
+        games[mode] &&
+        games[mode].date === today
+    ) {
+        return games[mode];
+    }
+    return null;
+}
+
+// save todays completed game
+function saveDailyGame(mode, elapsedTime, completed = true) {
+    const games = getDailyGames();
+    const savedCloudWords = cloudWords.map(word => {
+        return {
+            text: word.text,
+            fontSize: word.fontSize,
+            similarity: word.similarity,
+            x: word.x,
+            y: word.y
+        };
+    });
+
+    games[mode] = {
+        date: getToday(),
+        secretWord: secretWord,
+        theme: currentTheme,
+        guesses: [...guesses],
+        cloudWords: savedCloudWords,
+        elapsedTime: elapsedTime,
+        completed: completed
+    };
+    saveDailyGames(games);
+
+    // keep current-session map working too
+    completedGames.set(mode, games[mode]);
+    completedModes.add(mode);
+}
+
+// stats
+function getStats() {
+    const saved = localStorage.getItem(STATS_KEY);
+    if (!saved) {
+        return {
+            easy: [],
+            medium: [],
+            hard: []
+        };
+    }
+    try {
+        const stats = JSON.parse(saved);
+        return {
+            easy: stats.easy || [],
+            medium: stats.medium || [],
+            hard: stats.hard || []
+        };
+    } catch {
+        return {
+            easy: [],
+            medium: [],
+            hard: []
+        };
+    }
+}
+
+function saveStats(stats) {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+}
+
+// add completed game to statistics
+function recordStats(mode, guessesTaken, elapsedTime) {
+    const stats = getStats();
+    const today = getToday();
+
+    // don't record same daily puzzle twice
+    const alreadyRecorded = stats[mode].some(result => result.date === today);
+    if (alreadyRecorded) {
+        return;
+    }
+    stats[mode].push({date: today, guesses: guessesTaken, time: elapsedTime});
+
+    // keep chronological order.
+    stats[mode].sort((a, b) => a.date.localeCompare(b.date));
+    saveStats(stats);
+}
+
+// calculate current solved streak
+function getCurrentStreak(mode) {
+    const stats = getStats();
+    const results = stats[mode];
+    if (results.length === 0) {
+        return 0;
+    }
+    const solvedDates = new Set(results.map(result => result.date));
+    let streak = 0;
+    const date = new Date();
+
+    while (true) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const dateString = `${year}-${month}-${day}`;
+        if (!solvedDates.has(dateString)) {
+            break;
+        }
+        streak++;
+        date.setDate(date.getDate() - 1);
+    }
+    return streak;
+}
+
+// Calculate the best streak ever
+function getBestStreak(mode) {
+    const stats = getStats();
+    const results = stats[mode];
+
+    if (results.length === 0) {
+        return 0;
+    }
+
+    let best = 0;
+    let current = 0;
+    let previousDate = null;
+
+    for (const result of results) {
+        const date = new Date(`${result.date}T00:00:00`);
+        if (previousDate) {
+            const difference = (date - previousDate) / (1000 * 60 * 60 * 24);
+            if (difference === 1) {
+                current++;
+            } else {
+                current = 1;
+            }
+        } else {
+            current = 1;
+        }
+        best = Math.max(best, current);
+        previousDate = date;
+    }
+    return best;
+}
+
+function formatTime(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000)
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getAverage(mode, property) {
+    const stats = getStats();
+    const results = stats[mode];
+    if (results.length === 0) {
+        return null;
+    }
+    const total = results.reduce((sum, result) => sum + result[property], 0);
+    return total / results.length;
+}
+
+// making stat graphs
+function createStatsGraph(mode, property) {
+    const stats = getStats();
+    const results = stats[mode].slice(-14);
+
+    if (results.length < 2) {
+        return `
+            <div class="stats-no-graph">
+                Complete more daily games to see your progress.
+            </div>
+        `;
+    }
+
+    const width = 600;
+    const height = 220;
+
+    const paddingLeft = 45;
+    const paddingRight = 20;
+    const paddingTop = 20;
+    const paddingBottom = 35;
+
+    const values = results.map(result => result[property]);
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    const range = max - min || 1;
+
+    const points = results.map((result, index) => {
+        const x = paddingLeft + (index / (results.length - 1)) * (width - paddingLeft - paddingRight);
+        const y = paddingTop + (1 - ((result[property] - min) / range)) * (height - paddingTop - paddingBottom);
+        return {x, y, date: result.date, value: result[property]};
+    });
+    const pointString = points.map(point => `${point.x},${point.y}`).join(" ");
+    const circles = points.map(point => `
+            <circle
+                cx="${point.x}"
+                cy="${point.y}"
+                r="4"
+                class="stats-graph-point">
+                <title>
+                    ${point.date}: ${
+                        property === "time"
+                            ? formatTime(point.value)
+                            : point.value
+                    }
+                </title>
+            </circle>
+        `).join("");
+
+    const labels = points.map((point, index) => {
+            if (
+                index !== 0 &&
+                index !== points.length - 1 &&
+                index % 2 !== 0
+            ) {
+                return "";
+            }
+            const date = new Date(`${point.date}T00:00:00`);
+            return `
+                <text
+                    x="${point.x}"
+                    y="${height - 10}"
+                    text-anchor="middle"
+                    class="stats-graph-label">
+                    ${date.getDate()}/${date.getMonth() + 1}
+                </text>
+            `;
+        }).join("");
+
+    return `
+        <svg
+            class="stats-graph"
+            viewBox="0 0 ${width} ${height}"
+            preserveAspectRatio="none">
+            <polyline points="${pointString}" class="stats-graph-line" fill="none"
+            />
+            ${circles}
+            ${labels}
+        </svg>
+    `;
+}
+
+// maths/data/library stuff
 function cosineSimilarity(a, b) {
     let dotProduct = 0;
     let magnitudeA = 0;
     let magnitudeB = 0;
+
     for (let i = 0; i < a.data.length; i++) {
         dotProduct += a.data[i] * b.data[i];
         magnitudeA += a.data[i] * a.data[i];
         magnitudeB += b.data[i] * b.data[i];
     }
+
     magnitudeA = Math.sqrt(magnitudeA);
     magnitudeB = Math.sqrt(magnitudeB);
+
     console.log('Similarity is', dotProduct / (magnitudeA * magnitudeB));
     return dotProduct / (magnitudeA * magnitudeB);
 };
@@ -76,21 +386,29 @@ function updateTimer() {
     const elapsedSeconds = Math.floor(getElapsedMilliseconds() / 1000);
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
-
-    timer.textContent =
-        `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    timer.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function similarityToFontSize(similarity) {
-    if (similarity < MIN_SIMILARITY) {return MIN_FONT_SIZE;}
-    if (similarity > MAX_SIMILARITY) {return MAX_FONT_SIZE;}
+    if (similarity < MIN_SIMILARITY) {
+        return MIN_FONT_SIZE;
+    }
+    if (similarity > MAX_SIMILARITY) {
+        return MAX_FONT_SIZE;
+    }
     const x = (similarity - MIN_SIMILARITY) / (MAX_SIMILARITY - MIN_SIMILARITY);
     const curved = 3 * x ** 2 - 2 * x ** 3;
     return (MIN_FONT_SIZE + curved * (MAX_FONT_SIZE - MIN_FONT_SIZE));
 };
 
-const extractor = await pipeline("feature-extraction", "Xenova/paraphrase-MiniLM-L3-v2", {dtype: "q4"});
+const extractor = await pipeline(
+    "feature-extraction",
+    "Xenova/paraphrase-MiniLM-L3-v2",
+    {dtype: "q4"}
+);
+
 const embeddingCache = new Map();
+
 async function getEmbedding(word) {
     if (embeddingCache.has(word)) {
         return embeddingCache.get(word);
@@ -100,10 +418,8 @@ async function getEmbedding(word) {
     return output;
 };
 
-
 // html stuff
 const app = document.querySelector("#app");
-
 showMenu();
 
 // Game mode colours
@@ -113,91 +429,74 @@ const modeHues = {
     hard: 0
 };
 
+// menu ui
 function showMenu() {
     clearInterval(timerInterval);
-
     themeHue = 210;
-
     const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
     const textColour = `hsl(${themeHue}, 60%, 25%)`;
-
     document.documentElement.style.setProperty("--background-colour", backgroundColour);
     document.documentElement.style.setProperty("--text-colour", textColour);
-    
+
+    // check today's completed levels.
+    completedModes.clear();
+    for (const mode of ["easy", "medium", "hard"]) {
+        if (getSavedDailyGame(mode)) {
+            completedModes.add(mode);
+        }
+    }
+
     app.innerHTML = `
         <main class="home">
-
             <header class="header">
                 <h1>Semantic Gravity</h1>
                 <p>Follow the cloud.</p>
             </header>
-
             <div class="mode-selection">
                 <button class="mode-button easy" data-mode="easy">[easy]</button>
                 <button class="mode-button medium" data-mode="medium">[medium]</button>
                 <button class="mode-button hard" data-mode="hard">[hard]</button>
             </div>
-
-            <button class="tutorial-button" id="tutorialButton">
-                [how to play]
-            </button>
-
+            <button class="tutorial-button" id="tutorialButton">[how to play]</button>
+            <button class="tutorial-button" id="statsButton">[statistics]</button>
         </main>
-
-        <div class="tutorial-overlay" id="tutorialOverlay">
-
+        <div
+            class="tutorial-overlay"
+            id="tutorialOverlay">
             <div class="tutorial">
-
-                <button class="tutorial-close" id="tutorialClose">
-                    ×
-                </button>
-
+                <button class="tutorial-close" id="tutorialClose">x</button>
                 <div class="tutorial-image">
                     <img id="tutorialImage" src="./tutorial-1.png" alt="">
                 </div>
-
                 <div class="tutorial-content">
                     <h2 id="tutorialTitle"></h2>
                     <p id="tutorialText"></p>
                 </div>
-
                 <div class="tutorial-navigation">
-
-                    <button
-                        class="tutorial-navigation-button"
-                        id="tutorialPrevious">
-                        ←
-                    </button>
-
+                    <button class="tutorial-navigation-button" id="tutorialPrevious">←</button>
                     <span id="tutorialCounter">1 / 6</span>
-
-                    <button
-                        class="tutorial-navigation-button"
-                        id="tutorialNext">
-                        →
-                    </button>
-
+                    <button class="tutorial-navigation-button" id="tutorialNext">→</button>
                 </div>
-
             </div>
-
         </div>
     `;
 
-    document.querySelectorAll(".mode-button").forEach(button => {
-        const mode = button.dataset.mode;
+    // level select buttons
+    document.querySelectorAll(".mode-button")
+        .forEach(button => {
 
-        if (completedModes.has(mode)) {
-            button.classList.add("complete");
-        }
+            const mode = button.dataset.mode;
 
-        button.addEventListener("click", () => {
-            startGame(mode);
+            if (completedModes.has(mode)) {
+                button.classList.add("complete");
+            }
+
+            button.addEventListener("click", () => {
+                startGame(mode);
+            });
         });
-    });
 
-
-    // Tutorial
+    // tutorial
     const tutorialButton = document.getElementById("tutorialButton");
     const tutorialOverlay = document.getElementById("tutorialOverlay");
     const tutorialClose = document.getElementById("tutorialClose");
@@ -207,7 +506,6 @@ function showMenu() {
     const tutorialTitle = document.getElementById("tutorialTitle");
     const tutorialText = document.getElementById("tutorialText");
     const tutorialCounter = document.getElementById("tutorialCounter");
-
     const tutorialSlides = [
         {
             title: "Welcome to Semantic Gravity",
@@ -215,7 +513,7 @@ function showMenu() {
         },
         {
             title: "It's all about meaning",
-            text: `This game purely takes into account semantic meaning — although some words may be spelt similarly, if they don't mean the same thing as the secret word, they will be small.`
+            text: `This game purely takes into account semantic meaning - although some words may be spelt similarly, if they don't mean the same thing as the secret word, they will be small.`
         },
         {
             title: "One word, many meanings",
@@ -223,15 +521,15 @@ function showMenu() {
         },
         {
             title: "Don't go down rabbit holes",
-            text: `Don't go too far into rabbit holes when the words are small! In the above example, even though "breakfast" appears large and the given theme was "food", don't go down a rabbit hole of guessing breakfast foods — in this example, the link to breakfast was that, like the secret word "dinner", it is a mealtime.`
+            text: `Don't go too far into rabbit holes when the words are small! In the above example, even though "breakfast" appears large and the given theme was "food", don't go down a rabbit hole of guessing breakfast foods - in this example, the link to breakfast was that, like the secret word "dinner", it is a mealtime.`
         },
         {
             title: "Three levels to master",
-            text: `When playing Semantic Gravity, you will have 3 levels to complete. "Easy" will provide you with the theme of the secret word as a starter word. "Medium" will provide you with a word derived from the same theme as the secret word as a starter word. "Hard" will give you no clues, and is by far the most difficult — don't get disheartened if you struggle to find even one non-small word for a while!`
+            text: `When playing Semantic Gravity, you will have 3 levels to complete. "Easy" will provide you with the theme of the secret word as a starter word. "Medium" will provide you with a word derived from the same theme as the secret word as a starter word. "Hard" will give you no clues, and is by far the most difficult - don't get disheartened if you struggle to find even one non-small word for a while!`
         },
         {
             title: "Follow the cloud",
-            text: `I hope this introduction to Semantic Gravity allows you to enjoy the game to the fullest extent, so have fun finding those words in the fewest guesses, or the shortest time, your call! Have fun, and follow the cloud — good luck!`
+            text: `I hope this introduction to Semantic Gravity allows you to enjoy the game to the fullest extent, so have fun finding those words in the fewest guesses, or the shortest time, your call! Have fun, and follow the cloud - good luck!`
         }
     ];
 
@@ -239,15 +537,15 @@ function showMenu() {
 
     function updateTutorial() {
         const slide = tutorialSlides[tutorialSlide];
-
         tutorialImage.src = `./tutorial-${tutorialSlide + 1}.png`;
         tutorialTitle.textContent = slide.title;
         tutorialText.textContent = slide.text;
         tutorialCounter.textContent = `${tutorialSlide + 1} / ${tutorialSlides.length}`;
-
         tutorialPrevious.disabled = tutorialSlide === 0;
 
-        if (tutorialSlide === tutorialSlides.length - 1) {
+        if (
+            tutorialSlide === tutorialSlides.length - 1
+        ) {
             tutorialNext.textContent = "Done";
         } else {
             tutorialNext.textContent = "→";
@@ -278,26 +576,136 @@ function showMenu() {
     });
 
     tutorialNext.addEventListener("click", () => {
-        if (tutorialSlide < tutorialSlides.length - 1) {
+        if (
+            tutorialSlide <
+            tutorialSlides.length - 1
+        ) {
             tutorialSlide++;
             updateTutorial();
         } else {
             tutorialOverlay.classList.remove("visible");
-        }
-    });
-
+        }});
     updateTutorial();
+
+    // stats button
+    const statsButton = document.getElementById("statsButton");
+    statsButton.addEventListener("click", () => {showStats();});
 }
 
-// physics stuff
+// stats ui
+function showStats() {
+    clearInterval(timerInterval);
+    themeHue = 210;
+    const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
+    const textColour = `hsl(${themeHue}, 60%, 25%)`;
+    document.documentElement.style.setProperty("--background-colour", backgroundColour);
+    document.documentElement.style.setProperty("--text-colour", textColour);
+
+    app.innerHTML = `
+        <main class="home stats-page">
+            <header class="header">
+                <h1>Statistics</h1>
+                <p>Your Semantic Gravity journey.</p>
+            </header>
+
+            <div class="stats-modes">
+                ${createStatsSection("easy", "Easy")}
+                ${createStatsSection("medium", "Medium")}
+                ${createStatsSection("hard", "Hard")}
+            </div>
+
+            <button class="tutorial-button" id="statsBackButton">[back]</button>
+        </main>
+    `;
+
+    document.getElementById("statsBackButton").addEventListener("click", () => {showMenu();});
+}
+
+// stats panels
+function createStatsSection(mode, title) {
+    const stats = getStats();
+    const results = stats[mode];
+    const total = results.length;
+    const currentStreak = getCurrentStreak(mode);
+    const bestStreak = getBestStreak(mode);
+    const bestGuesses = total > 0 ? Math.min(...results.map(result => result.guesses)) : null;
+    const bestTime = total > 0 ? Math.min(...results.map(result => result.time)) : null;
+    const averageGuesses = getAverage(mode, "guesses");
+    const averageTime = getAverage(mode, "time");
+
+    return `
+        <section class="stats-section">
+            <h2>${title}</h2>
+
+            <div class="stats-grid">
+                <div class="stat">
+                    <strong>${total}</strong>
+                    <span>Solved</span>
+                </div>
+
+                <div class="stat">
+                    <strong>${currentStreak}</strong>
+                    <span>Current streak</span>
+                </div>
+
+                <div class="stat">
+                    <strong>${bestStreak}</strong>
+                    <span>Best streak</span>
+                </div>
+
+                <div class="stat">
+                    <strong>
+                        ${bestGuesses ?? "-"}
+                    </strong>
+                    <span>Fewest guesses</span>
+                </div>
+
+                <div class="stat">
+                    <strong>
+                        ${bestTime !== null ? formatTime(bestTime) : "-—"}
+                    </strong>
+                    <span>Fastest time</span>
+                </div>
+
+                <div class="stat">
+                    <strong>
+                        ${averageGuesses !== null ? averageGuesses.toFixed(1) : "-"}
+                    </strong>
+                    <span>Average guesses</span>
+                </div>
+
+                <div class="stat">
+                    <strong>
+                        ${averageTime !== null ? formatTime(averageTime) : "-"}
+                    </strong>
+                    <span>Average time</span>
+                </div>
+            </div>
+
+            <div class="stats-graphs">
+                <h3>Guesses over time</h3>
+                ${createStatsGraph(mode, "guesses")}
+
+                <h3>Time over time</h3>
+                ${createStatsGraph(mode, "time")}
+            </div>
+        </section>
+    `;
+}
+
+// plhysics egine
 class CloudWord {
-    constructor(text, fontSize, similarity, savedPosition = null, frozen = false) {
+    constructor(
+        text,
+        fontSize,
+        similarity,
+        savedPosition = null
+    ) {
         this.text = text;
         this.fontSize = fontSize;
         this.similarity = similarity;
-        this.frozen = frozen;
 
-        // Position
+        // spawn position
         const centreX = wordCloud.clientWidth / 2;
         const centreY = wordCloud.clientHeight / 2;
 
@@ -309,16 +717,16 @@ class CloudWord {
             const similarityRatio = Math.max(0, Math.min(1, similarity / MAX_SIMILARITY));
             const spawnRadius = (maximumRadius * (1 - similarityRatio)) + 20;
             const angle = Math.random() < 0.5 ? (Math.random() - 0.5) * Math.PI / 1.2 : Math.PI + (Math.random() - 0.5) * Math.PI / 1.2;
-            const distance = Math.sqrt(Math.random()) * spawnRadius;
+            const distance = Math.sqrt(Math.random()) *spawnRadius;
             this.x = centreX + Math.cos(angle) * distance;
             this.y = centreY + Math.sin(angle) * distance;
         }
 
-        // Velocity
+        // velocity
         this.vx = 0;
         this.vy = 0;
 
-        // Physical properties
+        // physical properties
         this.mass = Math.max(1, fontSize / 16);
         this.element = document.createElement("span");
         this.element.textContent = text;
@@ -336,16 +744,13 @@ class CloudWord {
         this.height = this.element.offsetHeight + WORD_PADDING_FACTOR;
     }
 
-
     update() {
-        if (this.frozen) {return;}
-
         const centreX = wordCloud.clientWidth / 2;
         const centreY = wordCloud.clientHeight / 2;
         let forceX = 0;
         let forceY = 0;
 
-        // Attraction towards centre
+        // attraction towards centre
         const halfWidth = this.width / 2;
         const halfHeight = this.height / 2;
         const closestX = Math.max(this.x - halfWidth, Math.min(centreX, this.x + halfWidth));
@@ -354,21 +759,19 @@ class CloudWord {
         let centreDY = centreY - closestY;
         const centreDistance = Math.sqrt(centreDX * centreDX + centreDY * centreDY);
 
-        // If the centre is inside the word, fall back to using the word's centre.
         if (centreDistance === 0) {
             centreDX = centreX - this.x;
             centreDY = centreY - this.y;
         }
 
         const distance = Math.sqrt(centreDX * centreDX + centreDY * centreDY);
-
         if (distance > 0) {
             const attraction = 0.001 + this.similarity * 0.004;
             forceX += (centreDX / distance) * distance * attraction;
             forceY += (centreDY / distance) * distance * attraction;
         }
 
-        // Repulsion from other words
+        // repulsion from other words
         for (const other of cloudWords) {
             if (other === this) {continue;}
             const dx = this.x - other.x;
@@ -377,41 +780,41 @@ class CloudWord {
             const overlapY = (this.height + other.height) / 2 - Math.abs(dy);
             if (overlapX <= 0 || overlapY <= 0) {continue;}
 
-            // Which direction requires the least movement to resolve the collision?
-            if (overlapX < overlapY * 1.3) {
+            // find out which dir needs the least movement
+            if (
+                overlapX <
+                overlapY * 1.3
+            ) {
                 const direction = dx >= 0 ? 1 : -1;
                 const push = overlapX * 0.25;
                 forceX += direction * push * (other.mass / this.mass);
-
             } else {
                 const direction = dy >= 0 ? 1 : -1;
                 const push = overlapY * 0.25;
                 forceY += direction * push * (other.mass / this.mass);
             }
 
-            // Small sideways force allows words to slide around each other rather than forming vertical stacks
+            // Sideways force
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance > 0) {
                 const tangentX = -dy / distance;
                 const tangentY = dx / distance;
                 const slide = Math.min(overlapX, overlapY) * 0.08;
-
                 forceX += tangentX * slide * (other.mass / this.mass);
                 forceY += tangentY * slide * (other.mass / this.mass);
             }
         }
 
-
-        // Convert force into acceleration
+        // convert force to acceleration
         this.vx += forceX / this.mass;
         this.vy += forceY / this.mass;
 
-        // Damping
+        // slow down
         this.vx *= 0.82;
         this.vy *= 0.82;
 
-        // Limit maximum velocity
+        // limit max vel
         const maxVelocity = 8;
         const velocity = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
 
@@ -420,7 +823,7 @@ class CloudWord {
             this.vy = (this.vy / velocity) * maxVelocity;
         }
 
-        // Apply velocity
+        // apply vel
         this.x += this.vx;
         this.y += this.vy;
     }
@@ -431,17 +834,21 @@ class CloudWord {
     }
 }
 
-// Run several small physics steps per frame to make collisions smoother.
+// run a few physics steps per frame
 function updatePhysics() {
     const physicsSteps = 4;
-    for (let i = 0; i < physicsSteps; i++) {
+    for (
+        let i = 0;
+        i < physicsSteps;
+        i++
+    ) {
         for (const word of cloudWords) {
             word.update();
         }
     }
 }
 
-// Render the current positions
+// render urrent positions
 function animate() {
     updatePhysics();
     for (const word of cloudWords) {
@@ -452,81 +859,51 @@ function animate() {
 
 animate();
 
-
-// Save a completed game for the current session
-function saveCompletedGame(mode, elapsedTime) {
-    const savedCloudWords = cloudWords.map(word => {
-        return {
-            text: word.text,
-            fontSize: word.fontSize,
-            similarity: word.similarity,
-            x: word.x,
-            y: word.y
-        };
-    });
-
-    completedGames.set(mode, {
-        secretWord: secretWord,
-        theme: currentTheme,
-        guesses: [...guesses],
-        cloudWords: savedCloudWords,
-        elapsedTime: elapsedTime
-    });
-
-    completedModes.add(mode);
-}
-
-
-// Load a previously completed game
+// load already-completed game
 function loadCompletedGame(mode, savedGame) {
     console.log("Loading completed game:", mode);
-
-    // Set game mode colour
-    if (mode) {
-        themeHue = modeHues[mode];
-    } else {
-        themeHue = 240;
-    }
-    
-
-    // reset gamestate variables
+    themeHue = modeHues[mode];
     isPaused = false;
     gameOver = true;
     clearInterval(timerInterval);
     currentMode = mode;
 
-    // Restore game data
+    // restore game data
     secretWord = savedGame.secretWord;
     currentTheme = savedGame.theme;
 
     guesses.clear();
+
     for (const guess of savedGame.guesses) {
         guesses.add(guess);
     }
 
-    // Generate colour scheme
+    // Colour scheme
     const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
     const textColour = `hsl(${themeHue}, 60%, 25%)`;
 
     document.documentElement.style.setProperty("--background-colour", backgroundColour);
     document.documentElement.style.setProperty("--text-colour", textColour);
 
-    // Reset word cloud
     cloudWords = [];
 
-    // Create game UI
+    // menu ui
     app.innerHTML = `
-        <div class="game-controls" id="gameControls">
-            <button id="menuButton">Menu</button>
+        <div class="game-controls">
+            <button id="menuButton">
+                Menu
+            </button>
+
         </div>
 
-        <div class="timer" id="timer">00:00</div>
+        <div class="timer" id="timer">
+            00:00
+        </div>
 
         <main class="game">
-
             <header class="header">
                 <h1>Semantic Gravity</h1>
-                <p>Follow the cloud.</p>
+                <p>Today's puzzle.</p>
             </header>
 
             <section
@@ -540,7 +917,7 @@ function loadCompletedGame(mode, savedGame) {
                 <input
                     type="text"
                     id="wordInput"
-                    placeholder="Enter a word..."
+                    placeholder="Game completed"
                     autocomplete="off"
                     spellcheck="false"
                     disabled
@@ -556,108 +933,93 @@ function loadCompletedGame(mode, savedGame) {
         </main>
     `;
 
-    // Get game elements
+    // get elements
     wordCloud = document.getElementById("wordCloud");
     guessForm = document.getElementById("guessForm");
     wordInput = document.getElementById("wordInput");
     winMessage = document.getElementById("winMessage");
     winText = document.getElementById("winText");
     timer = document.getElementById("timer");
+
     const menuButton = document.getElementById("menuButton");
+    menuButton.addEventListener("click", () => {showMenu();});
 
-    menuButton.addEventListener("click", () => {
-        showMenu();
-    });
+    // restore timer
+    timer.textContent = formatTime(savedGame.elapsedTime);
 
-    // Restore timer
-    const elapsedSeconds = Math.floor(savedGame.elapsedTime / 1000);
-    const minutes = Math.floor(elapsedSeconds / 60);
-    const seconds = elapsedSeconds % 60;
-
-    timer.textContent =
-        `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-    // Restore word cloud
-    for (const savedWord of savedGame.cloudWords) {
-        const cloudWord = new CloudWord(
-            savedWord.text,
-            savedWord.fontSize,
-            savedWord.similarity,
-            {
-                x: savedWord.x,
-                y: savedWord.y
-            }
-        );
-
+    // restore cloud
+    for (
+        const savedWord of
+        savedGame.cloudWords
+    ) {
+        const cloudWord = new CloudWord(savedWord.text, savedWord.fontSize, savedWord.similarity, {x: savedWord.x, y: savedWord.y});
         cloudWords.push(cloudWord);
     }
 
-    // Display completion information
-    const numGuesses = mode === "hard"
-        ? guesses.size
-        : guesses.size - 1;
-
-    winText.textContent =
-        `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
+    // sisplay info
+    const numGuesses = mode === "hard" ? guesses.size : guesses.size - 1;
+    winText.textContent = `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
 }
 
-
-// Start game
+// start game
 async function startGame(mode) {
     console.log("Starting game:", mode);
 
-    // If this level has already been completed, load the saved game
-    if (completedGames.has(mode)) {
-        loadCompletedGame(mode, completedGames.get(mode));
+    // check if daily game has already been done
+    const savedGame = getSavedDailyGame(mode);
+
+    if (savedGame) {
+        completedGames.set(mode, savedGame);
+        loadCompletedGame(mode, savedGame);
         return;
     }
 
-    // Set game mode colour
-        if (mode) {
-            themeHue = modeHues[mode];
-        } else {
-            themeHue = 240;
-        }
+    // set game mode colour
+    themeHue = modeHues[mode];
 
-    // reset gamestate variables
+    // reset game state
     isPaused = false;
     gameOver = false;
+
     clearInterval(timerInterval);
     currentMode = mode;
 
-    // Generate colour scheme
+    // colour scheme
     const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
     const textColour = `hsl(${themeHue}, 60%, 25%)`;
 
     document.documentElement.style.setProperty("--background-colour", backgroundColour);
     document.documentElement.style.setProperty("--text-colour", textColour);
 
-    // Generate secret word
-    const themes = Object.keys(wordThemes);
-    let randomTheme = themes[Math.floor(Math.random() * themes.length)];
-    const themeWords = wordThemes[randomTheme];
-    secretWord = themeWords[Math.floor(Math.random() * themeWords.length)];
-    console.log("Theme:", randomTheme);
-    console.log("Secret word:", secretWord);
-
-    // Store current theme for persistence
-    currentTheme = randomTheme;
+    // generate daily words
+    const dailyPuzzle = generateDailyPuzzle(mode);
+    currentTheme = dailyPuzzle.theme;
+    secretWord = dailyPuzzle.secretWord;
+    console.log("Today's date:", dailyPuzzle.date);
 
     // Reset game state
     guesses.clear();
     cloudWords = [];
 
-    // Create game UI
+    // game ui
     app.innerHTML = `
-        <div class="game-controls" id="gameControls">
+        <div
+            class="game-controls"
+            id="gameControls">
             <button id="menuButton">Menu</button>
             <button id="pauseButton">Pause</button>
             <button id="giveUpButton">Give up</button>
         </div>
 
-        <div class="timer" id="timer">00:00</div>
+        <div
+            class="timer"
+            id="timer">
+            00:00
+        </div>
 
-        <div class="pause-overlay" id="pauseOverlay">
+        <div
+            class="pause-overlay"
+            id="pauseOverlay">
             <div class="pause-box">
                 <h2>Game paused</h2>
                 <p id="pauseTime">Time: 00:00</p>
@@ -667,10 +1029,9 @@ async function startGame(mode) {
         </div>
 
         <main class="game">
-
             <header class="header">
                 <h1>Semantic Gravity</h1>
-                <p>Follow the cloud.</p>
+                <p>Today's puzzle.</p>
             </header>
 
             <section
@@ -699,14 +1060,14 @@ async function startGame(mode) {
         </main>
     `;
 
-
-    // Get game elements
+    // Get elements
     wordCloud = document.getElementById("wordCloud");
     guessForm = document.getElementById("guessForm");
     wordInput = document.getElementById("wordInput");
     winMessage = document.getElementById("winMessage");
     winText = document.getElementById("winText");
     timer = document.getElementById("timer");
+
     const menuButton = document.getElementById("menuButton");
     const pauseButton = document.getElementById("pauseButton");
     const giveUpButton = document.getElementById("giveUpButton");
@@ -715,69 +1076,81 @@ async function startGame(mode) {
     const pauseGuesses = document.getElementById("pauseGuesses");
     const resumeButton = document.getElementById("resumeButton");
 
-    menuButton.addEventListener("click", () => {
-        showMenu();
-    });
+    // return to menu
+    menuButton.addEventListener(
+        "click",
+        () => {
+            showMenu();
+        }
+    );
 
-    pauseButton.addEventListener("click", () => {
-        isPaused = true;
-        clearInterval(timerInterval);
-        pausedElapsedTime = Date.now() - startTime;
-        pauseTime.textContent = `Time: ${timer.textContent}`;
-        const playerGuesses = mode === "hard" ? guesses.size : guesses.size - 1;
-        pauseGuesses.textContent = `Guesses: ${playerGuesses}`;
-        pauseOverlay.classList.add("visible");
-    });
+    // pause
+    pauseButton.addEventListener(
+        "click",
+        () => {
+            isPaused = true;
+            clearInterval(timerInterval);
+            pausedElapsedTime = Date.now() - startTime;
+            pauseTime.textContent = `Time: ${timer.textContent}`;
+            const playerGuesses = mode === "hard" ? guesses.size : guesses.size - 1;
+            pauseGuesses.textContent = `Guesses: ${playerGuesses}`;
+            pauseOverlay.classList.add("visible");
+        }
+    );
 
-    resumeButton.addEventListener("click", () => {
-        isPaused = false;
-        pauseOverlay.classList.remove("visible");
-        if (gameOver) {return;}
-        startTime = Date.now() - pausedElapsedTime;
-        timerInterval = setInterval(() => {updateTimer();}, 1000);
-    });
+    // resume
+    resumeButton.addEventListener(
+        "click",
+        () => {
+            isPaused = false;
+            pauseOverlay.classList.remove("visible");
+            if (gameOver) {return;}
+            startTime = Date.now() - pausedElapsedTime;
+            timerInterval = setInterval(() => {updateTimer();}, 1000);
+        }
+    );
 
-    giveUpButton.addEventListener("click", () => {
-        if (gameOver) {return;}
-        gameOver = true;
-        clearInterval(timerInterval);
+    // give up
+    giveUpButton.addEventListener(
+        "click",
+        () => {
+            if (gameOver) {return;}
+            gameOver = true;
+            clearInterval(timerInterval);
 
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-        const minutes = Math.floor(elapsedSeconds / 60);
-        const seconds = elapsedSeconds % 60;
-        const finalTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+            const elapsedTime = Date.now() - startTime;
+            const finalTime = formatTime(elapsedTime);
+            const playerGuesses = currentMode === "hard" ? guesses.size : guesses.size - 1;
+            const secretCloudWord = new CloudWord(secretWord, MAX_FONT_SIZE, 1);
 
-        const playerGuesses = currentMode === "hard"
-            ? guesses.size
-            : guesses.size - 1;
+            cloudWords.push(secretCloudWord);
+            winText.textContent = `The word was "${secretWord}" — you gave up after ${playerGuesses} guesses in ${finalTime}.`;
 
-        const secretCloudWord = new CloudWord(secretWord, MAX_FONT_SIZE, 1);
-        cloudWords.push(secretCloudWord);
+            winMessage.querySelector("h2").textContent = "Game over";
+            winMessage.classList.add("visible");
 
-        winText.textContent =
-            `The word was "${secretWord}" — you gave up after ${playerGuesses} guesses in ${finalTime}.`;
+            wordInput.disabled = true;
+            saveDailyGame(currentMode, elapsedTime, false);
+        }
+    );
 
-        winMessage.querySelector("h2").textContent = "Game over";
-        winMessage.classList.add("visible");
-        wordInput.disabled = true;
-    });
-
-
-    // Start timer
+    // timer
     startTime = Date.now();
-    timerInterval = setInterval(() => {updateTimer();}, 1000);
+    timerInterval = setInterval( () => {updateTimer();}, 1000);
 
-    // Starting clue
-    if (mode === "easy" || mode === "medium") {
+    // starting clue
+    if (
+        mode === "easy" ||
+        mode === "medium"
+    ) {
         let clueWord;
 
         if (mode === "easy") {
-            // Easy: give the player the theme itself
-            clueWord = randomTheme;
+            clueWord = currentTheme;
         } else {
-            // Medium: give the player a random word from the theme
+            const themeWords = wordThemes[currentTheme];
             const clueWords = themeWords.filter(word => word !== secretWord);
-            clueWord = clueWords[Math.floor(Math.random() * clueWords.length)];
+            clueWord = clueWords[hashString(`${getToday()}-${mode}-clue`) % clueWords.length];
         }
 
         const clueEmbedding = await getEmbedding(clueWord);
@@ -790,10 +1163,14 @@ async function startGame(mode) {
         guesses.add(clueWord);
     }
 
-    // Handle guesses
-    guessForm.addEventListener("submit", async (event) => {
+    // handle guesss
+    guessForm.addEventListener(
+        "submit",
+        async event => {
             event.preventDefault();
+
             if (isPaused || gameOver) {return;}
+
             const word = wordInput.value.trim().toLowerCase();
 
             if (!word) {
@@ -816,33 +1193,32 @@ async function startGame(mode) {
             const similarity = cosineSimilarity(wordEmbedding, secretEmbedding);
             const fontSize = similarityToFontSize(similarity);
             const cloudWord = new CloudWord(word, fontSize, similarity);
-
             cloudWords.push(cloudWord);
 
+            // win condition
             if (similarity >= 0.9999) {
                 gameOver = true;
                 clearInterval(timerInterval);
-                completedModes.add(mode);
 
                 const elapsedTime = Date.now() - startTime;
+                const numGuesses = mode === "hard" ? guesses.size + 1 : guesses.size;
 
-                const elapsedSeconds = Math.floor(elapsedTime / 1000);
-                const minutes = Math.floor(elapsedSeconds / 60);
-                const seconds = elapsedSeconds % 60;
-                const finalTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-
-                const numGuesses = mode === 'hard'
-                    ? guesses.size + 1
-                    : guesses.size;
-
-                winText.textContent =
-                    `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${finalTime}!`;
+                if (savedGame.completed) {
+                    winMessage.querySelector("h2").textContent = "Level completed!";
+                    winText.textContent = `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
+                } else {
+                    winMessage.querySelector("h2").textContent = "Game over";
+                    winText.textContent = `The word was "${secretWord}" — you gave up after ${numGuesses} guesses in ${timer.textContent}.`;
+                }
 
                 winMessage.classList.add("visible");
                 wordInput.disabled = true;
 
-                // Save the completed game
-                saveCompletedGame(mode, elapsedTime);
+                // Save today's completed game
+                saveDailyGame(mode, elapsedTime);
+
+                // Record statistics
+                recordStats(mode, numGuesses, elapsedTime);
             }
 
             wordInput.value = "";

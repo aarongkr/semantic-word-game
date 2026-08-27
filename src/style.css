@@ -571,3 +571,104 @@ body {
         padding: 10px 16px 16px;
     }
 }
+
+/* Statistics */
+
+.stats-page {
+    overflow-y: auto;
+}
+
+.stats-modes {
+    width: min(900px, 90vw);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.stats-section {
+    background: rgba(255, 255, 255, 0.55);
+    border-radius: 20px;
+    padding: 24px;
+}
+
+.stats-section h2 {
+    margin: 0 0 18px;
+    text-align: center;
+    font-size: 22px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px 6px;
+}
+
+.stat strong {
+    font-size: 24px;
+    color: var(--text-colour);
+}
+
+.stat span {
+    margin-top: 4px;
+    color: #777;
+    font-size: 12px;
+}
+
+.stats-graphs {
+    margin-top: 20px;
+}
+
+.stats-graphs h3 {
+    margin: 18px 0 8px;
+    font-size: 15px;
+    color: var(--text-colour);
+}
+
+.stats-graph {
+    width: 100%;
+    height: 180px;
+    overflow: visible;
+}
+
+.stats-graph-line {
+    stroke: var(--text-colour);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.stats-graph-point {
+    fill: var(--text-colour);
+}
+
+.stats-graph-label {
+    fill: #777;
+    font-size: 12px;
+}
+
+.stats-no-graph {
+    padding: 20px;
+    text-align: center;
+    color: #777;
+    font-size: 14px;
+}
+
+@media (max-width: 600px) {
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stats-section {
+        padding: 18px;
+    }
+}
