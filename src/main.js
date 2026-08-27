@@ -1203,21 +1203,17 @@ async function startGame(mode) {
                 const elapsedTime = Date.now() - startTime;
                 const numGuesses = mode === "hard" ? guesses.size + 1 : guesses.size;
 
-                if (savedGame.completed) {
-                    winMessage.querySelector("h2").textContent = "Level completed!";
-                    winText.textContent = `The word was "${secretWord}" - you got it in ${numGuesses} guesses in ${timer.textContent}!`;
-                } else {
-                    winMessage.querySelector("h2").textContent = "Game over";
-                    winText.textContent = `The word was "${secretWord}" - you gave up after ${numGuesses} guesses in ${timer.textContent}.`;
-                }
-
+                // add winning guess before saving
+                guesses.add(word);
+                winMessage.querySelector("h2").textContent = "Level completed!";
+                winText.textContent = `The word was "${secretWord}" - you got it in ${numGuesses} guesses in ${formatTime(elapsedTime)}!`;
                 winMessage.classList.add("visible");
                 wordInput.disabled = true;
 
-                // Save today's completed game
-                saveDailyGame(mode, elapsedTime);
+                // save today's completed game
+                saveDailyGame(mode, elapsedTime, true);
 
-                // Record statistics
+                // record statistics
                 recordStats(mode, numGuesses, elapsedTime);
             }
 
