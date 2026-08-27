@@ -22,9 +22,10 @@ const validWords = new Set(words.getAll());
 function isValidWord(word) {
     return validWords.has(word)
 };
+const guesses = new Set();
 
 // Game state
-let themeHue;
+let themeHue = 240;
 
 let secretWord;
 
@@ -45,12 +46,11 @@ let pausedElapsedTime = 0;
 let isPaused = false;
 let gameOver = false;
 let completedModes = new Set();
+let currentTheme;
 let currentMode;
 
-// Store completed games so they can be reopened during the session.
+// Store completed games for the current session
 const completedGames = new Map();
-
-let guesses = new Set();
 
 // important maths/data/library stuff
 function cosineSimilarity(a, b) {
@@ -60,7 +60,7 @@ function cosineSimilarity(a, b) {
     for (let i = 0; i < a.data.length; i++) {
         dotProduct += a.data[i] * b.data[i];
         magnitudeA += a.data[i] * a.data[i];
-        magnitudeB += a.data[i] * b.data[i];
+        magnitudeB += b.data[i] * b.data[i];
     }
     magnitudeA = Math.sqrt(magnitudeA);
     magnitudeB = Math.sqrt(magnitudeB);
@@ -115,13 +115,21 @@ const modeHues = {
 
 function showMenu() {
     clearInterval(timerInterval);
+    
+    themeHue = 210;
 
+    const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
+    const textColour = `hsl(${themeHue}, 60%, 25%)`;
+
+    document.documentElement.style.setProperty("--background-colour", backgroundColour);
+    document.documentElement.style.setProperty("--text-colour", textColour);
+    
     app.innerHTML = `
         <main class="home">
 
             <header class="header">
-                <h1>Semantic Word Game</h1>
-                <p>Find the secret word.</p>
+                <h1>Semantic Gravity</h1>
+                <p>Follow the cloud.</p>
             </header>
 
             <div class="mode-selection">
@@ -130,7 +138,50 @@ function showMenu() {
                 <button class="mode-button hard" data-mode="hard">[hard]</button>
             </div>
 
+            <button class="tutorial-button" id="tutorialButton">
+                [how to play]
+            </button>
+
         </main>
+
+        <div class="tutorial-overlay" id="tutorialOverlay">
+
+            <div class="tutorial">
+
+                <button class="tutorial-close" id="tutorialClose">
+                    ×
+                </button>
+
+                <div class="tutorial-image">
+                    <img id="tutorialImage" src="./tutorial-1.png" alt="">
+                </div>
+
+                <div class="tutorial-content">
+                    <h2 id="tutorialTitle"></h2>
+                    <p id="tutorialText"></p>
+                </div>
+
+                <div class="tutorial-navigation">
+
+                    <button
+                        class="tutorial-navigation-button"
+                        id="tutorialPrevious">
+                        ←
+                    </button>
+
+                    <span id="tutorialCounter">1 / 6</span>
+
+                    <button
+                        class="tutorial-navigation-button"
+                        id="tutorialNext">
+                        →
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
     `;
 
     document.querySelectorAll(".mode-button").forEach(button => {
@@ -144,28 +195,121 @@ function showMenu() {
             startGame(mode);
         });
     });
+
+
+    // Tutorial
+    const tutorialButton = document.getElementById("tutorialButton");
+    const tutorialOverlay = document.getElementById("tutorialOverlay");
+    const tutorialClose = document.getElementById("tutorialClose");
+    const tutorialPrevious = document.getElementById("tutorialPrevious");
+    const tutorialNext = document.getElementById("tutorialNext");
+    const tutorialImage = document.getElementById("tutorialImage");
+    const tutorialTitle = document.getElementById("tutorialTitle");
+    const tutorialText = document.getElementById("tutorialText");
+    const tutorialCounter = document.getElementById("tutorialCounter");
+
+    const tutorialSlides = [
+        {
+            title: "Welcome to Semantic Gravity",
+            text: `You must guess the secret word based on your word cloud, which grows with each guess. Guesses that are more semantically similar to the secret word will appear larger, and those further away will be smaller.`
+        },
+        {
+            title: "It's all about meaning",
+            text: `This game purely takes into account semantic meaning — although some words may be spelt similarly, if they don't mean the same thing as the secret word, they will be small.`
+        },
+        {
+            title: "One word, many meanings",
+            text: `Alternatively, a secret word can link to multiple words that have nothing to do with each other independently. In the example above, the secret word, "pupil", links to both "eye" and "school".`
+        },
+        {
+            title: "Don't go down rabbit holes",
+            text: `Don't go too far into rabbit holes when the words are small! In the above example, even though "breakfast" appears large and the given theme was "food", don't go down a rabbit hole of guessing breakfast foods — in this example, the link to breakfast was that, like the secret word "dinner", it is a mealtime.`
+        },
+        {
+            title: "Three levels to master",
+            text: `When playing Semantic Gravity, you will have 3 levels to complete. "Easy" will provide you with the theme of the secret word as a starter word. "Medium" will provide you with a word derived from the same theme as the secret word as a starter word. "Hard" will give you no clues, and is by far the most difficult — don't get disheartened if you struggle to find even one non-small word for a while!`
+        },
+        {
+            title: "Follow the cloud",
+            text: `I hope this introduction to Semantic Gravity allows you to enjoy the game to the fullest extent, so have fun finding those words in the fewest guesses, or the shortest time, your call! Have fun, and follow the cloud — good luck!`
+        }
+    ];
+
+    let tutorialSlide = 0;
+
+    function updateTutorial() {
+        const slide = tutorialSlides[tutorialSlide];
+
+        tutorialImage.src = `./tutorial-${tutorialSlide + 1}.png`;
+        tutorialTitle.textContent = slide.title;
+        tutorialText.textContent = slide.text;
+        tutorialCounter.textContent = `${tutorialSlide + 1} / ${tutorialSlides.length}`;
+
+        tutorialPrevious.disabled = tutorialSlide === 0;
+
+        if (tutorialSlide === tutorialSlides.length - 1) {
+            tutorialNext.textContent = "Done";
+        } else {
+            tutorialNext.textContent = "→";
+        }
+    }
+
+    tutorialButton.addEventListener("click", () => {
+        tutorialSlide = 0;
+        updateTutorial();
+        tutorialOverlay.classList.add("visible");
+    });
+
+    tutorialClose.addEventListener("click", () => {
+        tutorialOverlay.classList.remove("visible");
+    });
+
+    tutorialOverlay.addEventListener("click", event => {
+        if (event.target === tutorialOverlay) {
+            tutorialOverlay.classList.remove("visible");
+        }
+    });
+
+    tutorialPrevious.addEventListener("click", () => {
+        if (tutorialSlide > 0) {
+            tutorialSlide--;
+            updateTutorial();
+        }
+    });
+
+    tutorialNext.addEventListener("click", () => {
+        if (tutorialSlide < tutorialSlides.length - 1) {
+            tutorialSlide++;
+            updateTutorial();
+        } else {
+            tutorialOverlay.classList.remove("visible");
+        }
+    });
+
+    updateTutorial();
 }
 
 // physics stuff
 class CloudWord {
-    constructor(text, fontSize, similarity, savedX = null, savedY = null) {
+    constructor(text, fontSize, similarity, savedPosition = null, frozen = false) {
         this.text = text;
         this.fontSize = fontSize;
         this.similarity = similarity;
+        this.frozen = frozen;
 
         // Position
         const centreX = wordCloud.clientWidth / 2;
         const centreY = wordCloud.clientHeight / 2;
-        const maximumRadius = 250;
-        const similarityRatio = Math.max(0, Math.min(1, similarity / MAX_SIMILARITY));
-        const spawnRadius = maximumRadius * (1 - similarityRatio);
-        const angle = Math.random() * Math.PI * 2;
-        const distance = Math.sqrt(Math.random()) * spawnRadius;
 
-        if (savedX !== null && savedY !== null) {
-            this.x = savedX;
-            this.y = savedY;
+        if (savedPosition) {
+            this.x = savedPosition.x;
+            this.y = savedPosition.y;
         } else {
+            const maximumRadius = 250;
+            const similarityRatio = Math.max(0, Math.min(1, similarity / MAX_SIMILARITY));
+            const spawnRadius = (maximumRadius * (1 - similarityRatio)) + 20;
+            const angle = Math.random() < 0.5 ? (Math.random() - 0.5) * Math.PI / 1.2 : Math.PI + (Math.random() - 0.5) * Math.PI / 1.2;
+            const distance = Math.sqrt(Math.random()) * spawnRadius;
             this.x = centreX + Math.cos(angle) * distance;
             this.y = centreY + Math.sin(angle) * distance;
         }
@@ -194,6 +338,8 @@ class CloudWord {
 
 
     update() {
+        if (this.frozen) {return;}
+
         const centreX = wordCloud.clientWidth / 2;
         const centreY = wordCloud.clientHeight / 2;
         let forceX = 0;
@@ -307,25 +453,177 @@ function animate() {
 animate();
 
 
+// Save a completed game for the current session
+function saveCompletedGame(mode, elapsedTime) {
+    const savedCloudWords = cloudWords.map(word => {
+        return {
+            text: word.text,
+            fontSize: word.fontSize,
+            similarity: word.similarity,
+            x: word.x,
+            y: word.y
+        };
+    });
+
+    completedGames.set(mode, {
+        secretWord: secretWord,
+        theme: currentTheme,
+        guesses: [...guesses],
+        cloudWords: savedCloudWords,
+        elapsedTime: elapsedTime
+    });
+
+    completedModes.add(mode);
+}
+
+
+// Load a previously completed game
+function loadCompletedGame(mode, savedGame) {
+    console.log("Loading completed game:", mode);
+
+    // Set game mode colour
+    if (mode) {
+        themeHue = modeHues[mode];
+    } else {
+        themeHue = 240;
+    }
+    
+
+    // reset gamestate variables
+    isPaused = false;
+    gameOver = true;
+    clearInterval(timerInterval);
+    currentMode = mode;
+
+    // Restore game data
+    secretWord = savedGame.secretWord;
+    currentTheme = savedGame.theme;
+
+    guesses.clear();
+    for (const guess of savedGame.guesses) {
+        guesses.add(guess);
+    }
+
+    // Generate colour scheme
+    const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
+    const textColour = `hsl(${themeHue}, 60%, 25%)`;
+
+    document.documentElement.style.setProperty("--background-colour", backgroundColour);
+    document.documentElement.style.setProperty("--text-colour", textColour);
+
+    // Reset word cloud
+    cloudWords = [];
+
+    // Create game UI
+    app.innerHTML = `
+        <div class="game-controls" id="gameControls">
+            <button id="menuButton">Menu</button>
+        </div>
+
+        <div class="timer" id="timer">00:00</div>
+
+        <main class="game">
+
+            <header class="header">
+                <h1>Semantic Gravity</h1>
+                <p>Follow the cloud.</p>
+            </header>
+
+            <section
+                class="word-cloud"
+                id="wordCloud">
+            </section>
+
+            <form
+                class="input-area"
+                id="guessForm">
+                <input
+                    type="text"
+                    id="wordInput"
+                    placeholder="Enter a word..."
+                    autocomplete="off"
+                    spellcheck="false"
+                    disabled
+                />
+            </form>
+
+            <div
+                class="win-message visible"
+                id="winMessage">
+                <h2>Level completed!</h2>
+                <p id="winText"></p>
+            </div>
+        </main>
+    `;
+
+    // Get game elements
+    wordCloud = document.getElementById("wordCloud");
+    guessForm = document.getElementById("guessForm");
+    wordInput = document.getElementById("wordInput");
+    winMessage = document.getElementById("winMessage");
+    winText = document.getElementById("winText");
+    timer = document.getElementById("timer");
+    const menuButton = document.getElementById("menuButton");
+
+    menuButton.addEventListener("click", () => {
+        showMenu();
+    });
+
+    // Restore timer
+    const elapsedSeconds = Math.floor(savedGame.elapsedTime / 1000);
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+
+    timer.textContent =
+        `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+    // Restore word cloud
+    for (const savedWord of savedGame.cloudWords) {
+        const cloudWord = new CloudWord(
+            savedWord.text,
+            savedWord.fontSize,
+            savedWord.similarity,
+            {
+                x: savedWord.x,
+                y: savedWord.y
+            }
+        );
+
+        cloudWords.push(cloudWord);
+    }
+
+    // Display completion information
+    const numGuesses = mode === "hard"
+        ? guesses.size
+        : guesses.size - 1;
+
+    winText.textContent =
+        `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${timer.textContent}!`;
+}
+
+
 // Start game
 async function startGame(mode) {
     console.log("Starting game:", mode);
 
-    // Set game mode colour
-    themeHue = modeHues[mode];
-
-    // reset gamestate variables
-    isPaused = false;
-    clearInterval(timerInterval);
-    currentMode = mode;
-
-    // If this mode has already been completed, reopen the saved game.
+    // If this level has already been completed, load the saved game
     if (completedGames.has(mode)) {
-        loadCompletedGame(mode);
+        loadCompletedGame(mode, completedGames.get(mode));
         return;
     }
 
+    // Set game mode colour
+        if (mode) {
+            themeHue = modeHues[mode];
+        } else {
+            themeHue = 240;
+        }
+
+    // reset gamestate variables
+    isPaused = false;
     gameOver = false;
+    clearInterval(timerInterval);
+    currentMode = mode;
 
     // Generate colour scheme
     const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
@@ -336,14 +634,19 @@ async function startGame(mode) {
 
     // Generate secret word
     const themes = Object.keys(wordThemes);
-    const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+    let randomTheme = themes[Math.floor(Math.random() * themes.length)];
     const themeWords = wordThemes[randomTheme];
     secretWord = themeWords[Math.floor(Math.random() * themeWords.length)];
+    randomTheme = "food";
+    secretWord = "dinner";
     console.log("Theme:", randomTheme);
     console.log("Secret word:", secretWord);
 
+    // Store current theme for persistence
+    currentTheme = randomTheme;
+
     // Reset game state
-    guesses = new Set();
+    guesses.clear();
     cloudWords = [];
 
     // Create game UI
@@ -368,8 +671,8 @@ async function startGame(mode) {
         <main class="game">
 
             <header class="header">
-                <h1>Semantic Word Game</h1>
-                <p>Find the secret word.</p>
+                <h1>Semantic Gravity</h1>
+                <p>Follow the cloud.</p>
             </header>
 
             <section
@@ -419,7 +722,6 @@ async function startGame(mode) {
     });
 
     pauseButton.addEventListener("click", () => {
-        if (gameOver) {return;}
         isPaused = true;
         clearInterval(timerInterval);
         pausedElapsedTime = Date.now() - startTime;
@@ -441,21 +743,25 @@ async function startGame(mode) {
         if (gameOver) {return;}
         gameOver = true;
         clearInterval(timerInterval);
+
         const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
         const minutes = Math.floor(elapsedSeconds / 60);
         const seconds = elapsedSeconds % 60;
         const finalTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-        const playerGuesses = currentMode === "hard" ? guesses.size : guesses.size - 1;
+
+        const playerGuesses = currentMode === "hard"
+            ? guesses.size
+            : guesses.size - 1;
 
         const secretCloudWord = new CloudWord(secretWord, MAX_FONT_SIZE, 1);
         cloudWords.push(secretCloudWord);
 
-        winText.textContent = `The word was "${secretWord}" — you gave up after ${playerGuesses} guesses in ${finalTime}.`;
+        winText.textContent =
+            `The word was "${secretWord}" — you gave up after ${playerGuesses} guesses in ${finalTime}.`;
+
         winMessage.querySelector("h2").textContent = "Game over";
         winMessage.classList.add("visible");
         wordInput.disabled = true;
-
-        saveCompletedGame(mode);
     });
 
 
@@ -520,131 +826,29 @@ async function startGame(mode) {
                 clearInterval(timerInterval);
                 completedModes.add(mode);
 
-                const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                const elapsedTime = Date.now() - startTime;
+
+                const elapsedSeconds = Math.floor(elapsedTime / 1000);
                 const minutes = Math.floor(elapsedSeconds / 60);
                 const seconds = elapsedSeconds % 60;
                 const finalTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-                const numGuesses = mode === 'hard' ? guesses.size + 1 : guesses.size;
 
-                winText.textContent = `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${finalTime}!`;
+                const numGuesses = mode === 'hard'
+                    ? guesses.size + 1
+                    : guesses.size;
+
+                winText.textContent =
+                    `The word was "${secretWord}" — you got it in ${numGuesses} guesses in ${finalTime}!`;
 
                 winMessage.classList.add("visible");
                 wordInput.disabled = true;
 
-                saveCompletedGame(mode);
+                // Save the completed game
+                saveCompletedGame(mode, elapsedTime);
             }
 
             wordInput.value = "";
             guesses.add(word);
         }
     );
-}
-
-
-// Save a completed game so it can be reopened during the session.
-function saveCompletedGame(mode) {
-    completedModes.add(mode);
-
-    completedGames.set(mode, {
-        mode: mode,
-        secretWord: secretWord,
-        guesses: new Set(guesses),
-        cloudWords: cloudWords.map(word => ({
-            text: word.text,
-            fontSize: word.fontSize,
-            similarity: word.similarity,
-            x: word.x,
-            y: word.y
-        })),
-        finalTime: timer.textContent
-    });
-}
-
-
-// Load a completed game from the saved session data.
-function loadCompletedGame(mode) {
-    const savedGame = completedGames.get(mode);
-
-    themeHue = modeHues[mode];
-    secretWord = savedGame.secretWord;
-    currentMode = mode;
-    gameOver = true;
-    isPaused = false;
-    guesses = new Set(savedGame.guesses);
-    cloudWords = [];
-
-    const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
-    const textColour = `hsl(${themeHue}, 60%, 25%)`;
-
-    document.documentElement.style.setProperty("--background-colour", backgroundColour);
-    document.documentElement.style.setProperty("--text-colour", textColour);
-
-    app.innerHTML = `
-        <div class="game-controls" id="gameControls">
-            <button id="menuButton">Menu</button>
-        </div>
-
-        <div class="timer" id="timer">${savedGame.finalTime}</div>
-
-        <main class="game">
-
-            <header class="header">
-                <h1>Semantic Word Game</h1>
-                <p>Completed game.</p>
-            </header>
-
-            <section
-                class="word-cloud"
-                id="wordCloud">
-            </section>
-
-            <form
-                class="input-area"
-                id="guessForm">
-                <input
-                    type="text"
-                    id="wordInput"
-                    placeholder="Game completed"
-                    autocomplete="off"
-                    spellcheck="false"
-                    disabled
-                />
-            </form>
-
-            <div
-                class="win-message visible"
-                id="winMessage">
-                <h2>Congratulations!</h2>
-                <p id="winText"></p>
-            </div>
-        </main>
-    `;
-
-    wordCloud = document.getElementById("wordCloud");
-    guessForm = document.getElementById("guessForm");
-    wordInput = document.getElementById("wordInput");
-    winMessage = document.getElementById("winMessage");
-    winText = document.getElementById("winText");
-    timer = document.getElementById("timer");
-
-    const menuButton = document.getElementById("menuButton");
-
-    menuButton.addEventListener("click", () => {
-        showMenu();
-    });
-
-    for (const savedWord of savedGame.cloudWords) {
-        const cloudWord = new CloudWord(
-            savedWord.text,
-            savedWord.fontSize,
-            savedWord.similarity,
-            savedWord.x,
-            savedWord.y
-        );
-
-        cloudWords.push(cloudWord);
-    }
-
-    const playerGuesses = mode === "hard" ? guesses.size : guesses.size - 1;
-    winText.textContent = `The word was "${secretWord}" — you got it in ${playerGuesses} guesses in ${savedGame.finalTime}!`;
 }

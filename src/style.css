@@ -26,6 +26,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    overflow: hidden;
 }
 
 .header {
@@ -342,4 +343,231 @@ body {
 
 #resumeButton:hover {
     transform: scale(1.08);
+}
+
+/* Tutorial */
+.tutorial-button {
+    border: none;
+    background: none;
+
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+
+    color: #777;
+
+    cursor: pointer;
+
+    padding: 8px 16px;
+
+    transition:
+        transform 0.2s ease,
+        color 0.2s ease;
+}
+
+.tutorial-button:hover {
+    color: var(--text-colour);
+    transform: scale(1.08);
+}
+
+.tutorial-overlay {
+    position: fixed;
+    inset: 0;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    background: rgba(0, 0, 0, 0.35);
+
+    opacity: 0;
+    visibility: hidden;
+
+    transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease;
+
+    z-index: 100;
+}
+
+.tutorial-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tutorial {
+    position: relative;
+
+    width: min(720px, 90vw);
+    max-height: 90vh;
+
+    display: flex;
+    flex-direction: column;
+
+    background: var(--background-colour);
+    color: var(--text-colour);
+
+    border-radius: 20px;
+
+    overflow: hidden;
+
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+
+    animation: tutorialPop 0.2s ease-out;
+}
+
+.tutorial-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+
+    width: 36px;
+    height: 36px;
+
+    border: none;
+    border-radius: 50%;
+
+    background: rgba(255, 255, 255, 0.7);
+    color: #555;
+
+    font-family: inherit;
+    font-size: 24px;
+    line-height: 1;
+
+    cursor: pointer;
+
+    z-index: 2;
+
+    transition:
+        transform 0.2s ease,
+        background 0.2s ease;
+}
+
+.tutorial-close:hover {
+    background: white;
+    transform: scale(1.1);
+}
+
+.tutorial-image {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+
+    background: rgba(0, 0, 0, 0.05);
+
+    overflow: hidden;
+}
+
+.tutorial-image img {
+    width: 100%;
+    height: 100%;
+
+    display: block;
+
+    object-fit: cover;
+}
+
+.tutorial-content {
+    padding: 24px 32px 12px;
+
+    text-align: center;
+}
+
+.tutorial-content h2 {
+    margin: 0 0 8px;
+
+    font-size: 24px;
+}
+
+.tutorial-content p {
+    margin: 0;
+
+    color: #666;
+
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.tutorial-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 12px 24px 20px;
+}
+
+.tutorial-navigation-button {
+    min-width: 48px;
+    min-height: 40px;
+
+    border: none;
+    border-radius: 999px;
+
+    background: var(--text-colour);
+    color: var(--background-colour);
+
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+
+    cursor: pointer;
+
+    transition:
+        transform 0.2s ease,
+        opacity 0.2s ease;
+}
+
+.tutorial-navigation-button:hover:not(:disabled) {
+    transform: scale(1.08);
+}
+
+.tutorial-navigation-button:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+#tutorialCounter {
+    color: #777;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    font-variant-numeric: tabular-nums;
+}
+
+@keyframes tutorialPop {
+    0% {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+
+/* Mobile */
+@media (max-width: 600px) {
+
+    .tutorial {
+        width: 94vw;
+        max-height: 90vh;
+    }
+
+    .tutorial-content {
+        padding: 20px 20px 8px;
+    }
+
+    .tutorial-content h2 {
+        font-size: 20px;
+    }
+
+    .tutorial-content p {
+        font-size: 14px;
+    }
+
+    .tutorial-navigation {
+        padding: 10px 16px 16px;
+    }
 }
