@@ -115,7 +115,7 @@ const modeHues = {
 
 function showMenu() {
     clearInterval(timerInterval);
-    
+
     themeHue = 210;
 
     const backgroundColour = `hsl(${themeHue}, 60%, 92%)`;
@@ -637,8 +637,6 @@ async function startGame(mode) {
     let randomTheme = themes[Math.floor(Math.random() * themes.length)];
     const themeWords = wordThemes[randomTheme];
     secretWord = themeWords[Math.floor(Math.random() * themeWords.length)];
-    randomTheme = "food";
-    secretWord = "dinner";
     console.log("Theme:", randomTheme);
     console.log("Secret word:", secretWord);
 
